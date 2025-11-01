@@ -1,0 +1,12 @@
+export const ALERT_TIER1_MINUTES = 45;
+export const ALERT_TIER2_MINUTES = 60;
+export const ALERT_TIER3_MINUTES = 65;
+
+export const MOVEMENT_DELTA_THRESHOLD = 0.05;
+export const MOVEMENT_SUSTAIN_SECONDS = 10;
+export const QUIET_DEBOUNCE_MS = 1000;
+
+export const DISCONNECT_THRESHOLD_MS = 5000;
+
+export const TEMPERATURE_HISTORY_MINUTES = 120;
+export const ACTIVITY_HISTORY_MINUTES = 10;
