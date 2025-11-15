@@ -2,13 +2,13 @@
 Shared configuration and utility functions for the Delirium Prevention project.
 """
 # --- Hardware Configuration ---
-SERIAL_PORT = '/dev/tty.usbmodem1101' # <-- CHECK THIS PORT
+SERIAL_PORT = 'COM7' # <-- CHECK THIS PORT
 BAUD_RATE = 9600
 
 # --- ML Model Configuration ---
 WINDOW_SIZE = 20
 STEP_SIZE = 10
-ACTIVITIES = ['sitting', 'walking', 'waving']
+ACTIVITIES = ['sitting', 'walking']  # Simplified to 2 classes
 NUM_CLASSES = len(ACTIVITIES)
 
 # --- Shared Utility Functions ---

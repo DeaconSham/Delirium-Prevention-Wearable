@@ -1,13 +1,11 @@
 import serial
 import time
-import threading
 import torch
-import torch.nn as nn
 import numpy as np
 import joblib
 from flask import Flask
 from flask_socketio import SocketIO, emit
-import eventlet 
+import eventlet
 import os 
 
 from train_model import HARModel, WINDOW_SIZE, STEP_SIZE, ACTIVITIES, NUM_CLASSES, parse_full_packet, train_model
@@ -48,9 +46,14 @@ def send_serial_command(command_str):
     if ser and ser.is_open:
         try:
             print(f"Sending to Arduino: {command_str.strip()}")
-            ser.write(command_str.encode('ascii'))
+            bytes_written = ser.write(command_str.encode('ascii'))
+            print(f"  -> Wrote {bytes_written} bytes")
+            ser.flush()  # Force immediate write without buffering
+            print(f"  -> Flushed successfully")
+        except serial.SerialTimeoutException:
+            print(f"  -> ERROR: Write timeout - Arduino not responding")
         except Exception as e:
-            print(f"Error writing to serial: {e}")
+            print(f"  -> ERROR writing to serial: {e}")
 
 def format_lcd(line1, line2=""):
     return f"L:{line1}|{line2}\n"
@@ -62,13 +65,27 @@ def load_model(patient_id):
     try:
         model_path = f'{patient_id}_model.pth'
         scaler_path = f'{patient_id}_scaler.joblib'
-        
+
         if not os.path.exists(model_path) or not os.path.exists(scaler_path):
-            print(f"Model for '{patient_id}' not found. Loading 'test' model.")
-            patient_id = "test" # Fallback to test
-            model_path = 'test_model.pth'
-            scaler_path = 'test_scaler.joblib'
-        
+            print(f"Model for '{patient_id}' not found.")
+            if patient_id != "test":
+                print("Trying to load 'test' model as fallback...")
+                patient_id = "test"
+                model_path = 'test_model.pth'
+                scaler_path = 'test_scaler.joblib'
+
+            # Check again for test model
+            if not os.path.exists(model_path) or not os.path.exists(scaler_path):
+                print("--- No trained model found ---")
+                print("The system will run in RECORDING MODE only.")
+                print("Please:")
+                print("  1. Use the frontend to record training data")
+                print("  2. Train a model using the 'Train Model' button")
+                print("  3. The model will be loaded automatically after training")
+                model = None
+                scaler = None
+                return False
+
         model = HARModel(num_classes=NUM_CLASSES)
         model.load_state_dict(torch.load(model_path))
         model.eval()
@@ -76,9 +93,9 @@ def load_model(patient_id):
         current_patient_id = patient_id
         print(f"Successfully loaded model and scaler for patient: {patient_id}")
         return True
-    except FileNotFoundError:
-        print(f"--- FATAL ERROR: Could not find model for '{patient_id}' or 'test' ---")
-        print("Please run train_model.py to create a test model.")
+    except Exception as e:
+        print(f"--- ERROR loading model: {e} ---")
+        print("The system will run in RECORDING MODE only.")
         model = None
         scaler = None
         return False
@@ -230,14 +247,30 @@ def hardware_loop():
         try:
             if ser is None or not ser.is_open:
                 print("Attempting to connect to serial port...")
-                ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-                time.sleep(2)
+                ser = serial.Serial(
+                    SERIAL_PORT,
+                    BAUD_RATE,
+                    timeout=1,
+                    write_timeout=2,  # Increased write timeout
+                    dsrdtr=False,     # Disable DTR (prevents Arduino reset)
+                    rtscts=False      # Disable RTS/CTS flow control
+                )
+                print("Serial port opened. Waiting for Arduino to be ready...")
+                time.sleep(3)  # Give Arduino time to initialize
+
+                # Clear any stale data in buffers
+                ser.reset_input_buffer()
+                ser.reset_output_buffer()
+                print("Buffers cleared.")
+
                 print("Serial connection established.")
                 if device_state == "sleeping":
                     send_serial_command(format_lcd("Device Sleeping", "Temp. Monitor"))
+                    time.sleep(0.2)  # Increased delay between commands
                     send_serial_command(COLOUR_SLEEP)
                 else:
                     send_serial_command(format_lcd("Device Active", "Activity Mode"))
+                    time.sleep(0.2)  # Increased delay between commands
                     send_serial_command(COLOUR_ACTIVE)
             
             if ser.in_waiting > 0:
@@ -260,46 +293,67 @@ def hardware_loop():
                     if device_state == "active":
                         # --- ACTIVE STATE LOGIC ---
                         if 'X' not in parsed_dict or 'Y' not in parsed_dict or 'Z' not in parsed_dict:
-                            continue 
-                        
+                            continue
+
                         data_window.append([parsed_dict['X'], parsed_dict['Y'], parsed_dict['Z']])
-                        
+
                         if len(data_window) == WINDOW_SIZE:
                             if model is None or scaler is None:
                                 print("Model or scaler not loaded, skipping prediction.")
-                                data_window = data_window[STEP_SIZE:] 
+                                data_window = data_window[STEP_SIZE:]
                                 continue
 
+                            # Convert to numpy array
                             window_np = np.array(data_window, dtype=np.float32)
-                            window_scaled = scaler.transform(window_np)
+
+                            # Compute motion features (velocity/deltas)
+                            deltas = np.zeros_like(window_np)
+                            deltas[1:] = np.diff(window_np, axis=0)
+                            deltas[0] = deltas[1]
+
+                            # Combine raw data with velocity features (6 channels total)
+                            window_features = np.concatenate([window_np, deltas], axis=1)
+
+                            # Scale and prepare for model
+                            window_scaled = scaler.transform(window_features)
                             window_tensor = torch.from_numpy(window_scaled).unsqueeze(0).permute(0, 2, 1)
-                            
+
                             with torch.no_grad():
                                 outputs = model(window_tensor)
                                 _, predicted_idx = torch.max(outputs, 1)
-                            
+
                             current_activity = ACTIVITIES[predicted_idx.item()]
-                            
+
                             if current_activity == 'sitting':
                                 activity_meter = max(0, activity_meter - 1)
-                            else: 
+                            else:  # walking
                                 activity_meter = min(MAX_ACTIVITY_METER, activity_meter + 5)
-                                
+
+                            # Calculate progress percentage
+                            progress_percent = 0
+                            if MAX_ACTIVITY_METER > 0:
+                                progress_percent = activity_meter / MAX_ACTIVITY_METER
+
+                            # Create visual progress bar (10 chars wide to fit on 16-char LCD)
+                            bar_width = 10
+                            filled = int(progress_percent * bar_width)
+                            bar = "[" + ("=" * filled) + ("-" * (bar_width - filled)) + "]"
+
+                            # Format: "sitting" (7) or "walking" (7) + space + bar (12) = 20 chars
+                            # Need to shorten: use first char + bar
+                            activity_char = current_activity[0].upper()  # 'S' or 'W'
+
                             if activity_meter <= 0:
-                                send_serial_command(COLOUR_ALERT) 
-                                send_serial_command(format_lcd("Time to move!", "Meter: 0%"))
+                                send_serial_command(COLOUR_ALERT)
+                                send_serial_command(format_lcd("!! MOVE NOW !!", bar))
                                 socketio.emit('status_update', {'alert': 'inactive'})
                             else:
-                                send_serial_command(COLOUR_ACTIVE) 
-                                
-                                progress_percent = 0
-                                if MAX_ACTIVITY_METER > 0:
-                                    progress_percent = activity_meter / MAX_ACTIVITY_METER
-                                
-                                progress = int(progress_percent * 16)
-                                bar = "[" + ("=" * progress) + (" " * (16 - progress)) + "]"
-                                send_serial_command(format_lcd(f"Act: {current_activity}", bar))
-                            
+                                send_serial_command(COLOUR_ACTIVE)
+                                # Line 1: Activity name (full word)
+                                # Line 2: Progress bar with percentage
+                                percentage_text = f"{int(progress_percent * 100)}%"
+                                send_serial_command(format_lcd(f"{activity_char}:{current_activity}", f"{bar} {percentage_text}"))
+
                             socketio.emit('activity_update', {'activity': current_activity, 'meter': activity_meter})
                             data_window = data_window[STEP_SIZE:]
 

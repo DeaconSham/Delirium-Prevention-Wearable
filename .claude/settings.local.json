@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(npm run build:*)",
+      "Bash(python -m pip:*)",
+      "Bash(python -c:*)",
+      "Bash(powershell:*)",
+      "Bash(python -m pylint:*)",
+      "Bash(python test_serial.py:*)",
+      "Bash(npx vite)",
+      "Bash(timeout /t 5)",
+      "Bash(python test_lcd.py:*)",
+      "Bash(python -m py_compile:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
