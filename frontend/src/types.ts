@@ -1,26 +1,59 @@
-export type SwitchState = 'on' | 'off';
-export type DeviceStatus = 'on' | 'off' | 'sleeping' | 'disconnected';
-export type TempStatus = 'normal' | 'elevated' | 'fever' | 'low';
-export type AlertTier = 0 | 1 | 2 | 3;
-export type TelemetryMode = 'ws' | 'poll' | 'mock';
+// Device state types
+export type DeviceState = 'active' | 'sleeping';
+export type Activity = 'sitting' | 'walking' | '...';
 
-export interface Telemetry {
-  ts: number;
-  accel: { x: number; y: number; z: number; mag?: number };
-  temp_c: number;
-  switch: SwitchState;
-  sleep?: boolean;
-  device_id?: string;
-  rssi?: number;
-  battery?: number;
+// Sensor statistics (for sleep mode)
+export interface SensorStats {
+  avg: number;
+  min: number;
+  max: number;
+  last: number;
 }
 
-export interface TemperatureSample {
-  ts: number;
-  value: number;
+// State update event from backend
+export interface StateUpdate {
+  state: DeviceState;
+  meter: number;
+  activity?: string;
+  patient: string;
+  threshold: number;
 }
 
-export interface ActivitySample {
-  ts: number;
-  movement: boolean;
+// Activity update event from backend
+export interface ActivityUpdate {
+  activity: Activity;
+  meter: number;
+}
+
+// Sleep data update event from backend
+export interface SleepDataUpdate {
+  temp: SensorStats;
+  light: SensorStats;
+  sound: SensorStats;
+}
+
+// Recording status event from backend
+export interface RecordingStatus {
+  recording: boolean;
+  activity?: string;
+}
+
+// Training status event from backend
+export interface TrainingStatus {
+  message: string;
+}
+
+// Status update event from backend
+export interface StatusUpdate {
+  alert: 'inactive';
+}
+
+// Threshold update event from backend
+export interface ThresholdUpdate {
+  threshold: number;
+}
+
+// Live data event from backend
+export interface LiveDataEvent {
+  data: string;
 }
