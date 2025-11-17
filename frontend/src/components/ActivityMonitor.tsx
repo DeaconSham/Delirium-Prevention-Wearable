@@ -2,26 +2,36 @@ import type { Activity } from '../types';
 
 interface ActivityMonitorProps {
   activity: Activity;
-  meter: number;
-  threshold: number;
+  seconds: number;
+  maxSeconds: number;
   alert: boolean;
+  warning: string;
 }
 
-export function ActivityMonitor({ activity, meter, threshold, alert }: ActivityMonitorProps) {
-  const percentage = threshold > 0 ? (meter / threshold) * 100 : 0;
+export function ActivityMonitor({ activity, seconds, maxSeconds, alert, warning }: ActivityMonitorProps) {
+  const percentage = maxSeconds > 0 ? (seconds / maxSeconds) * 100 : 0;
 
-  // Determine color based on meter level
-  let meterColor = '#22c55e'; // green
-  if (percentage < 25) {
-    meterColor = '#ef4444'; // red
-  } else if (percentage < 50) {
-    meterColor = '#f59e0b'; // orange
+  // Determine color based on seconds level with tiered warnings
+  let meterColor = '#22c55e'; // green - normal
+  if (percentage <= 0) {
+    meterColor = '#ef4444'; // red - last warning (0%)
+  } else if (percentage <= 10) {
+    meterColor = '#ff4500'; // red-orange - warning 2 (10%)
+  } else if (percentage <= 30) {
+    meterColor = '#ffa500'; // orange - warning 1 (30%)
   }
 
   const activityEmoji = {
-    sitting: '🪑',
-    walking: '🚶',
+    still: '🧍',
+    active: '🚶',
     '...': '⏳',
+  };
+
+  // Format seconds to readable time (MM:SS)
+  const formatTime = (totalSeconds: number) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = Math.floor(totalSeconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -31,6 +41,12 @@ export function ActivityMonitor({ activity, meter, threshold, alert }: ActivityM
       {alert && (
         <div className="alert-banner">
           ⚠️ Time to move! Inactivity detected.
+        </div>
+      )}
+
+      {warning && !alert && (
+        <div className="alert-banner" style={{ backgroundColor: meterColor }}>
+          ⚠️ {warning === 'WARN1' ? 'Warning: Low activity time (30%)' : 'Critical: Very low activity time (10%)'}
         </div>
       )}
 
@@ -45,7 +61,7 @@ export function ActivityMonitor({ activity, meter, threshold, alert }: ActivityM
 
       <div className="meter-container">
         <div className="meter-label">
-          Inactivity Meter
+          Activity Time Remaining
         </div>
         <div className="meter-bar-background">
           <div
@@ -57,17 +73,19 @@ export function ActivityMonitor({ activity, meter, threshold, alert }: ActivityM
           />
         </div>
         <div className="meter-value">
-          {meter} / {threshold} ({Math.round(percentage)}%)
+          {formatTime(seconds)} / {formatTime(maxSeconds)} ({Math.round(percentage)}%)
         </div>
       </div>
 
       <div className="info-text">
-        {meter === 0 ? (
-          <p className="warning-text">⚠️ Activity meter depleted - movement needed!</p>
-        ) : activity === 'sitting' ? (
-          <p>Sitting detected - meter decreasing slowly</p>
+        {seconds <= 0 ? (
+          <p className="warning-text">⚠️ Activity time depleted - movement needed!</p>
+        ) : activity === 'still' ? (
+          <p>Still/inactive - time decreasing</p>
+        ) : activity === 'active' ? (
+          <p>Active movement detected - time recovering!</p>
         ) : (
-          <p>Active movement detected - meter recovering!</p>
+          <p>Waiting for activity data...</p>
         )}
       </div>
     </div>

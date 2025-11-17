@@ -2,8 +2,7 @@ import type { SensorStats } from '../types';
 
 interface SleepMonitorProps {
   temp: SensorStats | null;
-  light: SensorStats | null;
-  sound: SensorStats | null;
+  sleepDuration: number;
 }
 
 interface StatCardProps {
@@ -57,32 +56,41 @@ function StatCard({ title, icon, stats, unit }: StatCardProps) {
   );
 }
 
-export function SleepMonitor({ temp, light, sound }: SleepMonitorProps) {
+export function SleepMonitor({ temp, sleepDuration }: SleepMonitorProps) {
+  // Format sleep duration to HH:MM:SS
+  const formatDuration = (totalSeconds: number) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="card sleep-monitor">
-      <h2>Sleep Environment Monitor</h2>
-      <p className="subtitle">Monitoring environmental conditions during sleep mode</p>
+      <h2>Sleep Monitor</h2>
+      <p className="subtitle">Monitoring sleep duration and temperature</p>
+
+      <div className="sleep-timer">
+        <div className="timer-icon">😴</div>
+        <div className="timer-label">Sleep Duration</div>
+        <div className="timer-value">{formatDuration(sleepDuration)}</div>
+      </div>
 
       <div className="stats-grid">
         <StatCard
-          title="Temperature"
+          title="Body Temperature"
           icon="🌡️"
           stats={temp}
           unit="°C"
         />
-        <StatCard
-          title="Light Level"
-          icon="💡"
-          stats={light}
-          unit=""
-        />
-        <StatCard
-          title="Sound Level"
-          icon="🔊"
-          stats={sound}
-          unit=""
-        />
       </div>
+
+      {temp && (
+        <div className="info-text" style={{ marginTop: '1rem', fontSize: '0.875rem' }}>
+          <p>Temperature readings are from the thermistor sensor.</p>
+          <p>Normal range: 20-30°C (ambient) or 35-38°C (body contact)</p>
+        </div>
+      )}
     </div>
   );
 }

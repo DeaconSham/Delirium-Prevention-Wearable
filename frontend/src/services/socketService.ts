@@ -6,7 +6,7 @@ import type {
   RecordingStatus,
   TrainingStatus,
   StatusUpdate,
-  ThresholdUpdate,
+  MaxSecondsUpdate,
   LiveDataEvent,
   DeviceState,
 } from '../types';
@@ -20,7 +20,7 @@ export interface SocketServiceCallbacks {
   onRecordingStatus?: (data: RecordingStatus) => void;
   onTrainingStatus?: (data: TrainingStatus) => void;
   onStatusUpdate?: (data: StatusUpdate) => void;
-  onThresholdUpdate?: (data: ThresholdUpdate) => void;
+  onMaxSecondsUpdate?: (data: MaxSecondsUpdate) => void;
   onLiveData?: (data: LiveDataEvent) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
@@ -76,8 +76,8 @@ class SocketService {
       this.callbacks.onStatusUpdate?.(data);
     });
 
-    this.socket.on('threshold_update', (data: ThresholdUpdate) => {
-      this.callbacks.onThresholdUpdate?.(data);
+    this.socket.on('max_seconds_update', (data: MaxSecondsUpdate) => {
+      this.callbacks.onMaxSecondsUpdate?.(data);
     });
 
     this.socket.on('live_data', (data: LiveDataEvent) => {
@@ -97,8 +97,8 @@ class SocketService {
     this.socket?.emit('set_state', { state });
   }
 
-  setInactivityThreshold(threshold: number) {
-    this.socket?.emit('set_inactivity_threshold', { threshold });
+  setMaxSeconds(maxSeconds: number) {
+    this.socket?.emit('set_max_seconds', { maxSeconds });
   }
 
   startRecording(patientId: string, activity: string) {

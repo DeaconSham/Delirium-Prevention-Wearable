@@ -10,7 +10,7 @@ interface DataRecorderProps {
   liveDataCount: number;
 }
 
-const ACTIVITIES = ['sitting', 'walking'];
+const ACTIVITIES = ['still', 'active'];
 
 export function DataRecorder({
   recording,
@@ -21,7 +21,7 @@ export function DataRecorder({
   onPatientIdChange,
   liveDataCount,
 }: DataRecorderProps) {
-  const [selectedActivity, setSelectedActivity] = useState('sitting');
+  const [selectedActivity, setSelectedActivity] = useState('still');
 
   const handleStartRecording = () => {
     if (!recording && patientId && selectedActivity) {
@@ -102,7 +102,7 @@ export function DataRecorder({
           <li>Click "Start Recording" and perform the activity</li>
           <li>Record for at least 30 seconds to get good training data</li>
           <li>Click "Stop Recording" when done</li>
-          <li>Repeat for both activities (sitting, walking)</li>
+          <li>Repeat for both activities (still, active)</li>
           <li>Once both activities are recorded, train the model</li>
         </ol>
       </div>

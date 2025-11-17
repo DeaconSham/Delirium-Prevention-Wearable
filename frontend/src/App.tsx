@@ -15,7 +15,7 @@ import type {
   RecordingStatus,
   TrainingStatus,
   StatusUpdate,
-  ThresholdUpdate,
+  MaxSecondsUpdate,
 } from './types';
 
 function App() {
@@ -25,17 +25,17 @@ function App() {
   // Device state
   const [deviceState, setDeviceState] = useState<DeviceState>('sleeping');
   const [patientId, setPatientId] = useState('test');
-  const [threshold, setThreshold] = useState(100);
+  const [maxSeconds, setMaxSeconds] = useState(300);
 
   // Activity monitoring state
   const [activity, setActivity] = useState<Activity>('...');
-  const [meter, setMeter] = useState(100);
+  const [seconds, setSeconds] = useState(300);
   const [alert, setAlert] = useState(false);
+  const [warning, setWarning] = useState('');
 
   // Sleep monitoring state
   const [tempStats, setTempStats] = useState<SensorStats | null>(null);
-  const [lightStats, setLightStats] = useState<SensorStats | null>(null);
-  const [soundStats, setSoundStats] = useState<SensorStats | null>(null);
+  const [sleepDuration, setSleepDuration] = useState(0);
 
   // Recording state
   const [recording, setRecording] = useState(false);
@@ -46,8 +46,11 @@ function App() {
   const [trainingMessages, setTrainingMessages] = useState<string[]>([]);
   const [isTraining, setIsTraining] = useState(false);
 
-  // Threshold input
-  const [thresholdInput, setThresholdInput] = useState('100');
+  // Max seconds input
+  const [maxSecondsInput, setMaxSecondsInput] = useState('300');
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'monitor' | 'training'>('monitor');
 
   useEffect(() => {
     socketService.connect({
@@ -62,23 +65,23 @@ function App() {
       onStateUpdate: (data: StateUpdate) => {
         console.log('State update:', data);
         setDeviceState(data.state);
-        setMeter(data.meter);
+        setSeconds(data.seconds);
         if (data.activity) setActivity(data.activity as Activity);
         setPatientId(data.patient);
-        setThreshold(data.threshold);
-        setThresholdInput(data.threshold.toString());
+        setMaxSeconds(data.maxSeconds);
+        setMaxSecondsInput(data.maxSeconds.toString());
       },
       onActivityUpdate: (data: ActivityUpdate) => {
         console.log('Activity update:', data);
         setActivity(data.activity);
-        setMeter(data.meter);
-        setAlert(data.meter === 0);
+        setSeconds(data.seconds);
+        setAlert(data.seconds === 0);
+        setWarning(data.warning || '');
       },
       onSleepDataUpdate: (data: SleepDataUpdate) => {
         console.log('Sleep data update:', data);
         setTempStats(data.temp);
-        setLightStats(data.light);
-        setSoundStats(data.sound);
+        setSleepDuration(data.sleepDuration);
       },
       onRecordingStatus: (data: RecordingStatus) => {
         console.log('Recording status:', data);
@@ -105,10 +108,10 @@ function App() {
           setAlert(true);
         }
       },
-      onThresholdUpdate: (data: ThresholdUpdate) => {
-        console.log('Threshold update:', data);
-        setThreshold(data.threshold);
-        setThresholdInput(data.threshold.toString());
+      onMaxSecondsUpdate: (data: MaxSecondsUpdate) => {
+        console.log('Max seconds update:', data);
+        setMaxSeconds(data.maxSeconds);
+        setMaxSecondsInput(data.maxSeconds.toString());
       },
       onLiveData: () => {
         setLiveDataCount((prev) => prev + 1);
@@ -126,10 +129,10 @@ function App() {
     setAlert(false);
   };
 
-  const handleThresholdChange = () => {
-    const value = parseInt(thresholdInput, 10);
+  const handleMaxSecondsChange = () => {
+    const value = parseInt(maxSecondsInput, 10);
     if (!isNaN(value) && value > 0) {
-      socketService.setInactivityThreshold(value);
+      socketService.setMaxSeconds(value);
     }
   };
 
@@ -157,95 +160,117 @@ function App() {
         </div>
       </header>
 
+      {/* Tab Navigation */}
+      <div className="tab-navigation">
+        <button
+          className={`tab-button ${activeTab === 'monitor' ? 'active' : ''}`}
+          onClick={() => setActiveTab('monitor')}
+        >
+          📊 Monitor
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'training' ? 'active' : ''}`}
+          onClick={() => setActiveTab('training')}
+        >
+          🤖 Training & Data
+        </button>
+      </div>
+
       <main className="app-main">
-        {/* Control Panel */}
-        <div className="card control-panel">
-          <h2>Control Panel</h2>
+        {activeTab === 'monitor' ? (
+          <>
+            {/* Control Panel */}
+            <div className="card control-panel">
+              <h2>Control Panel</h2>
 
-          <div className="control-section">
-            <h3>Device Mode</h3>
-            <div className="button-group">
-              <button
-                className={`btn ${deviceState === 'active' ? 'btn-active' : 'btn-secondary'}`}
-                onClick={() => handleStateChange('active')}
-                disabled={!connected || recording}
-              >
-                🏃 Active Mode
-              </button>
-              <button
-                className={`btn ${deviceState === 'sleeping' ? 'btn-active' : 'btn-secondary'}`}
-                onClick={() => handleStateChange('sleeping')}
-                disabled={!connected || recording}
-              >
-                😴 Sleep Mode
-              </button>
-            </div>
-          </div>
-
-          <div className="control-section">
-            <h3>Patient ID</h3>
-            <div className="patient-info">
-              Current: <strong>{patientId}</strong>
-            </div>
-          </div>
-
-          {deviceState === 'active' && (
-            <div className="control-section">
-              <h3>Inactivity Threshold</h3>
-              <div className="threshold-control">
-                <input
-                  type="number"
-                  value={thresholdInput}
-                  onChange={(e) => setThresholdInput(e.target.value)}
-                  min="1"
-                  disabled={!connected}
-                />
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleThresholdChange}
-                  disabled={!connected}
-                >
-                  Update
-                </button>
+              <div className="control-section">
+                <h3>Device Mode</h3>
+                <div className="button-group">
+                  <button
+                    className={`btn ${deviceState === 'active' ? 'btn-active' : 'btn-secondary'}`}
+                    onClick={() => handleStateChange('active')}
+                    disabled={!connected || recording}
+                  >
+                    🏃 Active Mode
+                  </button>
+                  <button
+                    className={`btn ${deviceState === 'sleeping' ? 'btn-active' : 'btn-secondary'}`}
+                    onClick={() => handleStateChange('sleeping')}
+                    disabled={!connected || recording}
+                  >
+                    😴 Sleep Mode
+                  </button>
+                </div>
               </div>
+
+              <div className="control-section">
+                <h3>Patient ID</h3>
+                <div className="patient-info">
+                  Current: <strong>{patientId}</strong>
+                </div>
+              </div>
+
+              {deviceState === 'active' && (
+                <div className="control-section">
+                  <h3>Max Activity Time (seconds)</h3>
+                  <div className="threshold-control">
+                    <input
+                      type="number"
+                      value={maxSecondsInput}
+                      onChange={(e) => setMaxSecondsInput(e.target.value)}
+                      min="1"
+                      disabled={!connected}
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      onClick={handleMaxSecondsChange}
+                      disabled={!connected}
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Activity or Sleep Monitor */}
-        {deviceState === 'active' ? (
-          <ActivityMonitor
-            activity={activity}
-            meter={meter}
-            threshold={threshold}
-            alert={alert}
-          />
+            {/* Activity or Sleep Monitor */}
+            {deviceState === 'active' ? (
+              <ActivityMonitor
+                activity={activity}
+                seconds={seconds}
+                maxSeconds={maxSeconds}
+                alert={alert}
+                warning={warning}
+              />
+            ) : (
+              <SleepMonitor
+                temp={tempStats}
+                sleepDuration={sleepDuration}
+              />
+            )}
+          </>
         ) : (
-          <SleepMonitor
-            temp={tempStats}
-            light={lightStats}
-            sound={soundStats}
-          />
+          <>
+            {/* Data Recorder */}
+            <DataRecorder
+              recording={recording}
+              currentActivity={recordingActivity}
+              patientId={patientId}
+              onStartRecording={handleStartRecording}
+              onStopRecording={handleStopRecording}
+              onPatientIdChange={setPatientId}
+              liveDataCount={liveDataCount}
+            />
+
+            {/* Model Trainer */}
+            <ModelTrainer
+              patientId={patientId}
+              trainingMessages={trainingMessages}
+              onTrainModel={handleTrainModel}
+              isTraining={isTraining}
+            />
+          </>
         )}
-
-        {/* Data Recorder */}
-        <DataRecorder
-          recording={recording}
-          currentActivity={recordingActivity}
-          patientId={patientId}
-          onStartRecording={handleStartRecording}
-          onStopRecording={handleStopRecording}
-          onPatientIdChange={setPatientId}
-          liveDataCount={liveDataCount}
-        />
-
-        {/* Model Trainer */}
-        <ModelTrainer
-          patientId={patientId}
-          trainingMessages={trainingMessages}
-          onTrainModel={handleTrainModel}
-          isTraining={isTraining}
-        />
       </main>
 
       <footer className="app-footer">

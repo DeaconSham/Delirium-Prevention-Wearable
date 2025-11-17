@@ -12,11 +12,13 @@ from train_model import HARModel, WINDOW_SIZE, STEP_SIZE, ACTIVITIES, NUM_CLASSE
 from shared_config import SERIAL_PORT, BAUD_RATE
 
 # --- Configuration ---
-MAX_ACTIVITY_METER = 100 
+MAX_ACTIVITY_SECONDS = 300  # Changed from threshold to seconds (5 minutes default) 
 
 # --- Define Our Colours ---
 COLOUR_ACTIVE = "RGB:0,100,255\n"  # Blue
-COLOUR_ALERT  = "RGB:255,0,0\n"    # Red
+COLOUR_WARNING_1 = "RGB:255,165,0\n"  # Orange (30% warning)
+COLOUR_WARNING_2 = "RGB:255,69,0\n"   # Red-Orange (10% warning)
+COLOUR_ALERT  = "RGB:255,0,0\n"    # Red (0% - last warning)
 COLOUR_SLEEP  = "RGB:0,0,50\n"     # Dim Blue
 COLOUR_RECORDING = "RGB:0,255,0\n" # Green
 
@@ -27,16 +29,15 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 ser = None 
 
 # Application state
-device_state = "sleeping" 
-activity_meter = MAX_ACTIVITY_METER
+device_state = "sleeping"
+activity_seconds = MAX_ACTIVITY_SECONDS  # Changed from meter to seconds
 current_activity = "..."
 current_patient_id = "test" # Default patient is now "test"
 model = None
 scaler = None
 
 temp_readings = []
-light_readings = []
-sound_readings = []
+sleep_start_time = None  # Track when sleep mode started
 
 is_recording = False
 current_recording_file = None
@@ -106,73 +107,79 @@ def handle_connect():
     """Called when React frontend connects."""
     print("React frontend connected.")
     emit('state_update', {
-        'state': device_state, 
-        'meter': activity_meter, 
-        'activity': current_activity, 
+        'state': device_state,
+        'seconds': activity_seconds,
+        'activity': current_activity,
         'patient': current_patient_id,
-        'threshold': MAX_ACTIVITY_METER 
+        'maxSeconds': MAX_ACTIVITY_SECONDS
     })
-    
+
     if device_state == 'sleeping' and temp_readings:
+        # Calculate sleep duration
+        sleep_duration = 0
+        if sleep_start_time:
+            sleep_duration = int(time.time() - sleep_start_time)
+
         emit('sleep_data_update', {
             'temp': {'avg': round(np.mean(temp_readings), 2), 'min': min(temp_readings), 'max': max(temp_readings), 'last': temp_readings[-1]},
-            'light': {'avg': round(np.mean(light_readings), 2), 'min': min(light_readings), 'max': max(light_readings), 'last': light_readings[-1]},
-            'sound': {'avg': round(np.mean(sound_readings), 2), 'min': min(sound_readings), 'max': max(sound_readings), 'last': sound_readings[-1]}
+            'sleepDuration': sleep_duration
         })
 
 @socketio.on('set_state')
 def handle_set_state(data):
     """Called when React sends a new state."""
-    global device_state, activity_meter, temp_readings, light_readings, sound_readings
-    
+    global device_state, activity_seconds, temp_readings, sleep_start_time
+
     new_state = data.get('state')
     if new_state == 'active':
         device_state = 'active'
-        activity_meter = MAX_ACTIVITY_METER 
-        temp_readings, light_readings, sound_readings = [], [], []
+        activity_seconds = MAX_ACTIVITY_SECONDS
+        temp_readings = []
+        sleep_start_time = None
         print("STATE CHANGE: ACTIVE")
         send_serial_command(format_lcd("Device Active", "Activity Mode"))
-        send_serial_command(COLOUR_ACTIVE) 
-        
+        send_serial_command(COLOUR_ACTIVE)
+
     elif new_state == 'sleeping':
         device_state = 'sleeping'
+        sleep_start_time = time.time()  # Start tracking sleep time
         print("STATE CHANGE: SLEEPING")
         send_serial_command(format_lcd("Device Sleeping", "Temp. Monitor"))
-        send_serial_command(COLOUR_SLEEP) 
+        send_serial_command(COLOUR_SLEEP)
 
     emit('state_update', {
-        'state': device_state, 
-        'meter': activity_meter, 
+        'state': device_state,
+        'seconds': activity_seconds,
         'patient': current_patient_id,
-        'threshold': MAX_ACTIVITY_METER
+        'maxSeconds': MAX_ACTIVITY_SECONDS
     })
 
-@socketio.on('set_inactivity_threshold')
-def handle_set_threshold(data):
-    """Called when React sends a new inactivity threshold."""
-    global MAX_ACTIVITY_METER, activity_meter, current_activity
-    
-    try:
-        new_threshold = int(data.get('threshold'))
-        if new_threshold > 0:
-            old_threshold = float(MAX_ACTIVITY_METER) 
-            MAX_ACTIVITY_METER = new_threshold
-            
-            if old_threshold > 0:
-                 activity_meter = int((activity_meter / old_threshold) * new_threshold)
-            else:
-                 activity_meter = new_threshold 
-            
-            activity_meter = min(activity_meter, MAX_ACTIVITY_METER) 
+@socketio.on('set_max_seconds')
+def handle_set_max_seconds(data):
+    """Called when React sends a new max activity seconds value."""
+    global MAX_ACTIVITY_SECONDS, activity_seconds, current_activity
 
-            print(f"--- Inactivity threshold updated to: {MAX_ACTIVITY_METER} ---")
-            
-            emit('threshold_update', {'threshold': MAX_ACTIVITY_METER}, broadcast=True)
-            emit('activity_update', {'activity': current_activity, 'meter': activity_meter}, broadcast=True)
+    try:
+        new_max_seconds = int(data.get('maxSeconds'))
+        if new_max_seconds > 0:
+            old_max = float(MAX_ACTIVITY_SECONDS)
+            MAX_ACTIVITY_SECONDS = new_max_seconds
+
+            if old_max > 0:
+                activity_seconds = int((activity_seconds / old_max) * new_max_seconds)
+            else:
+                activity_seconds = new_max_seconds
+
+            activity_seconds = min(activity_seconds, MAX_ACTIVITY_SECONDS)
+
+            print(f"--- Max activity seconds updated to: {MAX_ACTIVITY_SECONDS} ---")
+
+            emit('max_seconds_update', {'maxSeconds': MAX_ACTIVITY_SECONDS}, broadcast=True)
+            emit('activity_update', {'activity': current_activity, 'seconds': activity_seconds}, broadcast=True)
         else:
-            print("Ignoring invalid threshold (must be > 0)")
+            print("Ignoring invalid max seconds (must be > 0)")
     except Exception as e:
-        print(f"Error setting new threshold: {e}")
+        print(f"Error setting new max seconds: {e}")
 
 # --- Frontend Training API ---
 
@@ -238,10 +245,11 @@ def hardware_loop():
     The main background thread that reads from serial, runs the model,
     and manages the application logic.
     """
-    global device_state, activity_meter, current_activity, temp_readings, light_readings, sound_readings, ser
+    global device_state, activity_seconds, current_activity, temp_readings, ser, sleep_start_time
     global is_recording, current_recording_file
-    
+
     data_window = []
+    last_activity_update_time = time.time()  # Track when we last updated activity
     
     while True:
         try:
@@ -324,57 +332,89 @@ def hardware_loop():
 
                             current_activity = ACTIVITIES[predicted_idx.item()]
 
-                            if current_activity == 'sitting':
-                                activity_meter = max(0, activity_meter - 1)
-                            else:  # walking
-                                activity_meter = min(MAX_ACTIVITY_METER, activity_meter + 5)
+                            # Update activity seconds based on elapsed time
+                            current_time = time.time()
+                            elapsed = current_time - last_activity_update_time
+                            last_activity_update_time = current_time
+
+                            if current_activity == 'still':
+                                # Decrease by elapsed seconds
+                                activity_seconds = max(0, activity_seconds - elapsed)
+                            else:  # active
+                                # Increase by 5x elapsed seconds (recover faster)
+                                activity_seconds = min(MAX_ACTIVITY_SECONDS, activity_seconds + (5 * elapsed))
 
                             # Calculate progress percentage
                             progress_percent = 0
-                            if MAX_ACTIVITY_METER > 0:
-                                progress_percent = activity_meter / MAX_ACTIVITY_METER
+                            if MAX_ACTIVITY_SECONDS > 0:
+                                progress_percent = activity_seconds / MAX_ACTIVITY_SECONDS
 
                             # Create visual progress bar (10 chars wide to fit on 16-char LCD)
                             bar_width = 10
                             filled = int(progress_percent * bar_width)
                             bar = "[" + ("=" * filled) + ("-" * (bar_width - filled)) + "]"
 
-                            # Format: "sitting" (7) or "walking" (7) + space + bar (12) = 20 chars
-                            # Need to shorten: use first char + bar
-                            activity_char = current_activity[0].upper()  # 'S' or 'W'
+                            # Format activity display
+                            activity_char = current_activity[0].upper()  # 'S' (still) or 'A' (active)
 
-                            if activity_meter <= 0:
+                            # Determine warning level and set LCD color
+                            warning_text = ""
+                            if activity_seconds <= 0:
+                                # 0% - Last warning (Red)
                                 send_serial_command(COLOUR_ALERT)
+                                warning_text = "MOVE NOW!"
                                 send_serial_command(format_lcd("!! MOVE NOW !!", bar))
                                 socketio.emit('status_update', {'alert': 'inactive'})
+                            elif progress_percent <= 0.10:
+                                # 10% - Warning 2 (Red-Orange)
+                                send_serial_command(COLOUR_WARNING_2)
+                                warning_text = "WARN2"
+                                send_serial_command(format_lcd(f"{activity_char}:{current_activity} {warning_text}", bar))
+                            elif progress_percent <= 0.30:
+                                # 30% - Warning 1 (Orange)
+                                send_serial_command(COLOUR_WARNING_1)
+                                warning_text = "WARN1"
+                                send_serial_command(format_lcd(f"{activity_char}:{current_activity} {warning_text}", bar))
                             else:
+                                # Normal - Blue
                                 send_serial_command(COLOUR_ACTIVE)
-                                # Line 1: Activity name (full word)
-                                # Line 2: Progress bar with percentage
-                                percentage_text = f"{int(progress_percent * 100)}%"
-                                send_serial_command(format_lcd(f"{activity_char}:{current_activity}", f"{bar} {percentage_text}"))
+                                send_serial_command(format_lcd(f"{activity_char}:{current_activity}", bar))
 
-                            socketio.emit('activity_update', {'activity': current_activity, 'meter': activity_meter})
+                            socketio.emit('activity_update', {
+                                'activity': current_activity,
+                                'seconds': int(activity_seconds),
+                                'warning': warning_text
+                            })
                             data_window = data_window[STEP_SIZE:]
 
                     elif device_state == "sleeping":
                         # --- SLEEPING STATE LOGIC ---
                         temp = parsed_dict.get('T', 0)
-                        light = parsed_dict.get('L', 0)
-                        sound = parsed_dict.get('S', 0)
-                        
+
                         temp_readings.append(temp)
-                        light_readings.append(light)
-                        sound_readings.append(sound)
-                        
-                        if len(temp_readings) > 100: temp_readings.pop(0)
-                        if len(light_readings) > 100: light_readings.pop(0)
-                        if len(sound_readings) > 100: sound_readings.pop(0)
-                        
+
+                        if len(temp_readings) > 100:
+                            temp_readings.pop(0)
+
+                        # Calculate sleep duration
+                        sleep_duration = 0
+                        if sleep_start_time:
+                            sleep_duration = int(time.time() - sleep_start_time)
+
+                        # Format sleep duration for LCD (HH:MM:SS)
+                        hours = sleep_duration // 3600
+                        minutes = (sleep_duration % 3600) // 60
+                        seconds_part = sleep_duration % 60
+                        duration_str = f"{hours:02d}:{minutes:02d}:{seconds_part:02d}"
+
+                        # Display temperature and sleep duration on LCD
+                        temp_str = f"Temp: {temp:.1f}C"
+                        sleep_str = f"Sleep: {duration_str}"
+                        send_serial_command(format_lcd(temp_str, sleep_str))
+
                         socketio.emit('sleep_data_update', {
-                            'temp':  {'avg': round(np.mean(temp_readings), 2),  'min': min(temp_readings),  'max': max(temp_readings),  'last': temp},
-                            'light': {'avg': round(np.mean(light_readings), 2), 'min': min(light_readings), 'max': max(light_readings), 'last': light},
-                            'sound': {'avg': round(np.mean(sound_readings), 2), 'min': min(sound_readings), 'max': max(sound_readings), 'last': sound}
+                            'temp': {'avg': round(np.mean(temp_readings), 2), 'min': min(temp_readings), 'max': max(temp_readings), 'last': temp},
+                            'sleepDuration': sleep_duration
                         })
 
             eventlet.sleep(0.01) 

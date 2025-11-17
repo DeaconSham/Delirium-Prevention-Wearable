@@ -8,15 +8,15 @@ BAUD_RATE = 9600
 # --- ML Model Configuration ---
 WINDOW_SIZE = 20
 STEP_SIZE = 10
-ACTIVITIES = ['sitting', 'walking']  # Simplified to 2 classes
+ACTIVITIES = ['still', 'active']  # Simplified to 2 classes
 NUM_CLASSES = len(ACTIVITIES)
 
 # --- Shared Utility Functions ---
 def parse_full_packet(line):
     """
     Parses a full data packet line and returns a dictionary.
-    Format: "T:25.1,X:2048,Y:2050,Z:2046,L:512,S:123"
-    
+    Format: "T:25.1,X:2048,Y:2050,Z:2046"
+
     This parser is robust and will parse all valid key:value
     pairs it finds, even if some are missing.
     """
@@ -30,5 +30,5 @@ def parse_full_packet(line):
     except Exception as e:
         print(f"Error parsing packet part: {e}")
         pass
-    
+
     return data

@@ -1,6 +1,6 @@
 // Device state types
 export type DeviceState = 'active' | 'sleeping';
-export type Activity = 'sitting' | 'walking' | '...';
+export type Activity = 'still' | 'active' | '...';
 
 // Sensor statistics (for sleep mode)
 export interface SensorStats {
@@ -13,23 +13,23 @@ export interface SensorStats {
 // State update event from backend
 export interface StateUpdate {
   state: DeviceState;
-  meter: number;
+  seconds: number;
   activity?: string;
   patient: string;
-  threshold: number;
+  maxSeconds: number;
 }
 
 // Activity update event from backend
 export interface ActivityUpdate {
   activity: Activity;
-  meter: number;
+  seconds: number;
+  warning?: string;
 }
 
 // Sleep data update event from backend
 export interface SleepDataUpdate {
   temp: SensorStats;
-  light: SensorStats;
-  sound: SensorStats;
+  sleepDuration: number;
 }
 
 // Recording status event from backend
@@ -48,9 +48,9 @@ export interface StatusUpdate {
   alert: 'inactive';
 }
 
-// Threshold update event from backend
-export interface ThresholdUpdate {
-  threshold: number;
+// Max seconds update event from backend
+export interface MaxSecondsUpdate {
+  maxSeconds: number;
 }
 
 // Live data event from backend
