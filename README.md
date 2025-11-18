@@ -36,7 +36,7 @@ The system is composed of three main components that communicate in real-time:
 - **Hardware**:
     - Arduino Uno/Nano/Mega (or compatible)
     - STM32 Nucleo-F401RE (in development)
-    - Sensors: Accelerometer (ADXL335), Thermistor, Photoresistor, Sound Sensor
+    - Sensors: Accelerometer (ADXL335), Thermistor
     - 16x2 I2C LCD Display with RGB backlight
 - **Firmware**:
     - C/C++ for Arduino (`.ino`)
