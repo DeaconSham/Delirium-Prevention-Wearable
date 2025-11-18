@@ -75,6 +75,7 @@ Here's a schematic layout of how the hardware was implemented for this project.
 2.  Open `firmware/arduino_firmware/arduino_firmware.ino` in the Arduino IDE.
 3.  Select the correct board and COM port from the `Tools` menu.
 4.  Click the "Upload" button.
+5. Test the firmware using the Python scripts in the `test_scripts` and run `test_lcd.py` and `test_serial.py`.
 
 ### 3. Setup the Backend
 
