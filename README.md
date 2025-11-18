@@ -63,14 +63,20 @@ The system is composed of three main components that communicate in real-time:
     - [Python 3.8+](https://www.python.org/downloads/)
     - [Node.js 16+](https://nodejs.org/) (includes npm)
 
-### 1. Setup the Firmware
+### 1. Setup the Hardware
+
+Here's a schematic layout of how the hardware was implemented for this project.
+
+![Schematic Layout](schematic.png)
+
+### 2. Setup the Firmware
 
 1.  Connect the Arduino device to your computer.
 2.  Open `firmware/arduino_firmware/arduino_firmware.ino` in the Arduino IDE.
 3.  Select the correct board and COM port from the `Tools` menu.
 4.  Click the "Upload" button.
 
-### 2. Setup the Backend
+### 3. Setup the Backend
 
 1.  Navigate to the backend directory:
     ```bash
@@ -93,7 +99,7 @@ The system is composed of three main components that communicate in real-time:
     ```
     The server will start and attempt to connect to the Arduino.
 
-### 3. Setup the Frontend
+### 4. Setup the Frontend
 
 1.  In a new terminal, navigate to the frontend directory:
     ```bash
