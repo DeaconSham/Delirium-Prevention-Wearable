@@ -1,32 +1,3 @@
-/* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
-#include "main.h"
-#include "adc.h"
-#include "dma.h"
-#include "i2c.h"
-#include "usart.h"
-#include "gpio.h"
-
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-#include "i2c-lcd.h"
 #include "stdio.h"
 #include "string.h"
 #include "math.h"
@@ -218,47 +189,80 @@ void sendSensorData(void)
 		temp_C = temp_K - 273.15;
 	}
 
-	int len = sprintf(tx_buf, "Temp:%.1f,X:%u,Y:%u,Z:%u\n",
+	/* Format the data string to match Arduino format: T:temp,X:x,Y:y,Z:z */
+	int len = sprintf(tx_buf, "T:%.1f,X:%d,Y:%d,Z:%d\n",
 	                    temp_C,
-	                    accel_x_val,
-	                    accel_y_val,
-	                    accel_z_val);
+	                    (int)accel_x_val,
+	                    (int)accel_y_val,
+	                    (int)accel_z_val);
 	HAL_UART_Transmit(&huart2, (uint8_t*)tx_buf, len, 100);
 }
 
+/**
+ * @brief Processes a command string from the Python backend.
+ * @param cmd The null-terminated command string to parse.
+ * @details Supports the following commands:
+ *   - RGB:r,g,b - Set LCD backlight color
+ *   - L:line1|line2 - Display text on LCD (line2 optional)
+ */
 void parseCommand(char *cmd)
 {
-	if (strncmp(cmd, "B:", 2) == 0)
+	/* Find the colon separator */
+	char *commandValue = strchr(cmd, ':');
+	if (commandValue == NULL)
 	{
-		int val = atoi(cmd + 2);
-		if (val == 1)
+		HAL_UART_Transmit(&huart2, (uint8_t*)"ERR:Invalid format\n", 20, 100);
+		return;
+	}
+
+	/* Split the string into commandType and commandValue */
+	*commandValue = '\0';
+	char *commandType = cmd;
+	commandValue++; /* Move pointer to the start of the value */
+
+	/* Handle RGB command */
+	if (strcmp(commandType, "RGB") == 0)
+	{
+		int r, g, b;
+		if (sscanf(commandValue, "%d,%d,%d", &r, &g, &b) == 3)
 		{
-			HAL_GPIO_WritePin(Buzzer_PIN_GPIO_Port, Buzzer_PIN_Pin, GPIO_PIN_SET);
+			lcd_set_rgb((uint8_t)r, (uint8_t)g, (uint8_t)b);
+			HAL_UART_Transmit(&huart2, (uint8_t*)"ACK:RGB\n", 9, 100);
 		}
 		else
 		{
-			HAL_GPIO_WritePin(Buzzer_PIN_GPIO_Port, Buzzer_PIN_Pin, GPIO_PIN_RESET);
+			HAL_UART_Transmit(&huart2, (uint8_t*)"ERR:RGB parse failed\n", 22, 100);
 		}
 	}
-
-	if (strncmp(cmd, "L:", 2) == 0)
+	/* Handle LCD text display command */
+	else if (strcmp(commandType, "L") == 0)
 	{
-		char *msg = cmd + 2;
-		char *saveptr;
-		char *line1 = strtok_r(msg, "|", &saveptr);
-		char *line2 = strtok_r(NULL, "|", &saveptr);
-
 		lcd_clear();
-		lcd_set_cursor(0, 0);
-		if (line1)
+		char *line2 = strchr(commandValue, '|');
+
+		if (line2 == NULL)
 		{
-			lcd_send_string(line1);
+			/* Only one line of text */
+			lcd_set_cursor(0, 0);
+			lcd_send_string(commandValue);
 		}
-		if (line2)
+		else
 		{
+			/* Two lines of text, split by '|' */
+			*line2 = '\0'; /* Terminate the first line */
+			char *line1 = commandValue;
+			line2++; /* Move pointer to the start of the second line */
+
+			lcd_set_cursor(0, 0);
+			lcd_send_string(line1);
 			lcd_set_cursor(0, 1);
 			lcd_send_string(line2);
 		}
+		HAL_UART_Transmit(&huart2, (uint8_t*)"ACK:L\n", 7, 100);
+	}
+	else
+	{
+		HAL_UART_Transmit(&huart2, (uint8_t*)"ERR:Unknown command\n", 21, 100);
 	}
 }
 
