@@ -12,9 +12,9 @@ from train_model import HARModel, WINDOW_SIZE, STEP_SIZE, ACTIVITIES, NUM_CLASSE
 from shared_config import SERIAL_PORT, BAUD_RATE
 
 # --- Configuration ---
-MAX_ACTIVITY_SECONDS = 300  # Changed from threshold to seconds (5 minutes default) 
+MAX_ACTIVITY_SECONDS = 300  # 5 minute default, but can be changed in frontend
 
-# --- Define Our Colours ---
+# --- Colours ---
 COLOUR_ACTIVE = "RGB:0,100,255\n"  # Blue
 COLOUR_WARNING_1 = "RGB:255,165,0\n"  # Orange (30% warning)
 COLOUR_WARNING_2 = "RGB:255,69,0\n"   # Red-Orange (10% warning)
@@ -28,11 +28,11 @@ app.config['SECRET_KEY'] = 'your_secret_key!'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 ser = None 
 
-# Application state
+# Patient state
 device_state = "sleeping"
-activity_seconds = MAX_ACTIVITY_SECONDS  # Changed from meter to seconds
+activity_seconds = MAX_ACTIVITY_SECONDS
 current_activity = "..."
-current_patient_id = "test" # Default patient is now "test"
+current_patient_id = "test"
 model = None
 scaler = None
 
@@ -42,7 +42,7 @@ sleep_start_time = None  # Track when sleep mode started
 is_recording = False
 current_recording_file = None
 
-# --- Serial Communication Helpers ---
+# --- Serial Communication Function ---
 def send_serial_command(command_str):
     if ser and ser.is_open:
         try:
@@ -61,7 +61,7 @@ def format_lcd(line1, line2=""):
 
 # --- ML Model Loader ---
 def load_model(patient_id):
-    """Loads a specific patient's model and scaler into memory."""
+    # Loads a specific patient's model and scaler into memory.
     global model, scaler, current_patient_id
     try:
         model_path = f'{patient_id}_model.pth'
@@ -79,7 +79,7 @@ def load_model(patient_id):
             if not os.path.exists(model_path) or not os.path.exists(scaler_path):
                 print("--- No trained model found ---")
                 print("The system will run in RECORDING MODE only.")
-                print("Please:")
+                print("Do the following:")
                 print("  1. Use the frontend to record training data")
                 print("  2. Train a model using the 'Train Model' button")
                 print("  3. The model will be loaded automatically after training")
@@ -104,7 +104,7 @@ def load_model(patient_id):
 # --- Web API (Socket.IO) ---
 @socketio.on('connect')
 def handle_connect():
-    """Called when React frontend connects."""
+    # Called when React frontend connects.
     print("React frontend connected.")
     emit('state_update', {
         'state': device_state,
@@ -127,7 +127,7 @@ def handle_connect():
 
 @socketio.on('set_state')
 def handle_set_state(data):
-    """Called when React sends a new state."""
+    # Called when React sends a new state.
     global device_state, activity_seconds, temp_readings, sleep_start_time
 
     new_state = data.get('state')
@@ -156,7 +156,7 @@ def handle_set_state(data):
 
 @socketio.on('set_max_seconds')
 def handle_set_max_seconds(data):
-    """Called when React sends a new max activity seconds value."""
+    # Called when React sends a new max activity seconds value.
     global MAX_ACTIVITY_SECONDS, activity_seconds, current_activity
 
     try:
@@ -181,7 +181,7 @@ def handle_set_max_seconds(data):
     except Exception as e:
         print(f"Error setting new max seconds: {e}")
 
-# --- Frontend Training API ---
+# --- Frontend Training API Call ---
 
 @socketio.on('start_recording')
 def handle_start_recording(data):
@@ -239,12 +239,10 @@ def train_model_wrapper(patient_id, callback):
         send_serial_command(format_lcd("Training FAILED", "See console."))
         send_serial_command(COLOUR_ALERT)
 
-# --- Main Hardware & ML Thread ---
+# --- Main Hardware and ML Thread ---
 def hardware_loop():
-    """
-    The main background thread that reads from serial, runs the model,
-    and manages the application logic.
-    """
+    # The main background thread that reads from serial, runs the model,
+    # and manages the application logic.
     global device_state, activity_seconds, current_activity, temp_readings, ser, sleep_start_time
     global is_recording, current_recording_file
 
@@ -260,8 +258,8 @@ def hardware_loop():
                     BAUD_RATE,
                     timeout=1,
                     write_timeout=2,  # Increased write timeout
-                    dsrdtr=False,     # Disable DTR (prevents Arduino reset)
-                    rtscts=False      # Disable RTS/CTS flow control
+                    dsrdtr=False,     # Disable Data Terminal (DTR) (prevents Arduino reset)
+                    rtscts=False      # Disable Request to Send and Clear to Send (RTS/CTS) flow control
                 )
                 print("Serial port opened. Waiting for Arduino to be ready...")
                 time.sleep(3)  # Give Arduino time to initialize
@@ -287,12 +285,12 @@ def hardware_loop():
                 if not data_str or not data_str.startswith("T:"):
                     continue
                 
-                # --- A. Data Recording Logic ---
+                # --- Data Recording Logic ---
                 if is_recording and current_recording_file:
                     current_recording_file.write(data_str + '\n')
                     socketio.emit('live_data', {'data': data_str}) 
 
-                # --- B. State-Based Logic (only if not recording) ---
+                # --- State-Based Logic (only if not recording) ---
                 if not is_recording:
                     parsed_dict = parse_full_packet(data_str)
                     if not parsed_dict: 
@@ -314,7 +312,7 @@ def hardware_loop():
                             # Convert to numpy array
                             window_np = np.array(data_window, dtype=np.float32)
 
-                            # Compute motion features (velocity/deltas)
+                            # Compute motion features (deltas)
                             deltas = np.zeros_like(window_np)
                             deltas[1:] = np.diff(window_np, axis=0)
                             deltas[0] = deltas[1]
@@ -341,7 +339,7 @@ def hardware_loop():
                                 # Decrease by elapsed seconds
                                 activity_seconds = max(0, activity_seconds - elapsed)
                             else:  # active
-                                # Increase by 5x elapsed seconds (recover faster)
+                                # Increase by five times the elapsed seconds (recover faster)
                                 activity_seconds = min(MAX_ACTIVITY_SECONDS, activity_seconds + (5 * elapsed))
 
                             # Calculate progress percentage

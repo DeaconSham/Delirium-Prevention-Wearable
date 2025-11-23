@@ -18,41 +18,55 @@ import type {
   MaxSecondsUpdate,
 } from './types';
 
+/**
+ * The main application component. It serves as the central hub for state management,
+ * WebSocket communication, and rendering of all child components.
+ */
 function App() {
-  // Connection state
+  // --- STATE MANAGEMENT ---
+  // All application state is managed here and passed down to child components as props.
+
+  // State for the WebSocket connection status.
   const [connected, setConnected] = useState(false);
 
-  // Device state
+  // State for the overall device mode ('active' or 'sleeping').
   const [deviceState, setDeviceState] = useState<DeviceState>('sleeping');
+  // State for the current patient/user ID.
   const [patientId, setPatientId] = useState('test');
+  // State for the maximum inactivity time before alerts.
   const [maxSeconds, setMaxSeconds] = useState(300);
 
-  // Activity monitoring state
+  // State related to activity monitoring.
   const [activity, setActivity] = useState<Activity>('...');
-  const [seconds, setSeconds] = useState(300);
-  const [alert, setAlert] = useState(false);
-  const [warning, setWarning] = useState('');
+  const [seconds, setSeconds] = useState(300); // Current inactivity countdown.
+  const [alert, setAlert] = useState(false);     // True if the inactivity alert is active.
+  const [warning, setWarning] = useState('');   // Holds the current warning level text (e.g., "WARN1").
 
-  // Sleep monitoring state
+  // State related to sleep monitoring.
   const [tempStats, setTempStats] = useState<SensorStats | null>(null);
   const [sleepDuration, setSleepDuration] = useState(0);
 
-  // Recording state
+  // State for data recording.
   const [recording, setRecording] = useState(false);
   const [recordingActivity, setRecordingActivity] = useState('');
-  const [liveDataCount, setLiveDataCount] = useState(0);
+  const [liveDataCount, setLiveDataCount] = useState(0); // Counter for incoming data points during recording.
 
-  // Training state
+  // State for the model training process.
   const [trainingMessages, setTrainingMessages] = useState<string[]>([]);
   const [isTraining, setIsTraining] = useState(false);
 
-  // Max seconds input
+  // State for the controlled input field for max seconds.
   const [maxSecondsInput, setMaxSecondsInput] = useState('300');
 
-  // Tab state
+  // State to manage which primary view is visible ('monitor' or 'training').
   const [activeTab, setActiveTab] = useState<'monitor' | 'training'>('monitor');
 
+  /**
+   * Main effect hook for managing the WebSocket connection and event listeners.
+   * This runs only once when the component mounts.
+   */
   useEffect(() => {
+    // Connect to the backend and register all event handlers.
     socketService.connect({
       onConnect: () => {
         console.log('Connected to backend');
@@ -62,6 +76,7 @@ function App() {
         console.log('Disconnected from backend');
         setConnected(false);
       },
+      // Handles a full state refresh from the backend, usually on initial connect.
       onStateUpdate: (data: StateUpdate) => {
         console.log('State update:', data);
         setDeviceState(data.state);
@@ -71,64 +86,63 @@ function App() {
         setMaxSeconds(data.maxSeconds);
         setMaxSecondsInput(data.maxSeconds.toString());
       },
+      // Handles real-time updates for the activity monitor.
       onActivityUpdate: (data: ActivityUpdate) => {
-        console.log('Activity update:', data);
         setActivity(data.activity);
         setSeconds(data.seconds);
         setAlert(data.seconds === 0);
         setWarning(data.warning || '');
       },
+      // Handles real-time updates for the sleep monitor.
       onSleepDataUpdate: (data: SleepDataUpdate) => {
-        console.log('Sleep data update:', data);
         setTempStats(data.temp);
         setSleepDuration(data.sleepDuration);
       },
+      // Handles updates on the data recording status.
       onRecordingStatus: (data: RecordingStatus) => {
-        console.log('Recording status:', data);
         setRecording(data.recording);
-        if (data.activity) {
-          setRecordingActivity(data.activity);
-        }
-        if (!data.recording) {
-          setLiveDataCount(0);
-        }
+        if (data.activity) setRecordingActivity(data.activity);
+        if (!data.recording) setLiveDataCount(0); // Reset counter when recording stops.
       },
+      // Handles real-time status messages from the model training process.
       onTrainingStatus: (data: TrainingStatus) => {
-        console.log('Training status:', data);
         setTrainingMessages((prev) => [...prev, data.message]);
-
-        // Check if training is complete or failed
-        if (data.message.includes('Done!') || data.message.includes('failed')) {
-          setIsTraining(false);
+        if (data.message.includes('complete') || data.message.includes('failed')) {
+          setIsTraining(false); // Re-enable training button on completion/failure.
         }
       },
+      // Handles general status updates, like inactivity alerts.
       onStatusUpdate: (data: StatusUpdate) => {
-        console.log('Status update:', data);
-        if (data.alert === 'inactive') {
-          setAlert(true);
-        }
+        if (data.alert === 'inactive') setAlert(true);
       },
+      // Handles confirmation that the max seconds value was updated on the backend.
       onMaxSecondsUpdate: (data: MaxSecondsUpdate) => {
-        console.log('Max seconds update:', data);
         setMaxSeconds(data.maxSeconds);
         setMaxSecondsInput(data.maxSeconds.toString());
       },
+      // A simple event to know live data is flowing during recording.
       onLiveData: () => {
         setLiveDataCount((prev) => prev + 1);
       },
     });
 
+    // Cleanup function: disconnect the socket when the component unmounts.
     return () => {
       socketService.disconnect();
     };
-  }, []);
+  }, []); // The empty dependency array ensures this effect runs only once.
 
+  // --- EVENT HANDLERS ---
+  // These functions are called by user interactions (e.g., button clicks).
+
+  /** Changes the device state between 'active' and 'sleeping'. */
   const handleStateChange = (newState: DeviceState) => {
     socketService.setState(newState);
-    setDeviceState(newState);
+    setDeviceState(newState); // Optimistically update the UI.
     setAlert(false);
   };
 
+  /** Sends the new max inactivity seconds value to the backend. */
   const handleMaxSecondsChange = () => {
     const value = parseInt(maxSecondsInput, 10);
     if (!isNaN(value) && value > 0) {
@@ -136,20 +150,24 @@ function App() {
     }
   };
 
+  /** Starts a data recording session for a given patient and activity. */
   const handleStartRecording = (pid: string, act: string) => {
     socketService.startRecording(pid, act);
   };
 
+  /** Stops the current data recording session. */
   const handleStopRecording = () => {
     socketService.stopRecording();
   };
 
+  /** Initiates the model training process for a given patient. */
   const handleTrainModel = (pid: string) => {
-    setTrainingMessages([]);
+    setTrainingMessages([]); // Clear previous training logs.
     setIsTraining(true);
     socketService.trainModel(pid);
   };
 
+  // --- RENDER LOGIC ---
   return (
     <div className="app">
       <header className="app-header">
@@ -160,7 +178,7 @@ function App() {
         </div>
       </header>
 
-      {/* Tab Navigation */}
+      {/* Tab navigation to switch between the monitoring and training views. */}
       <div className="tab-navigation">
         <button
           className={`tab-button ${activeTab === 'monitor' ? 'active' : ''}`}
@@ -177,9 +195,10 @@ function App() {
       </div>
 
       <main className="app-main">
+        {/* Conditional rendering based on the active tab. */}
         {activeTab === 'monitor' ? (
           <>
-            {/* Control Panel */}
+            {/* Control Panel for changing device mode and patient settings. */}
             <div className="card control-panel">
               <h2>Control Panel</h2>
 
@@ -210,6 +229,7 @@ function App() {
                 </div>
               </div>
 
+              {/* Only show the 'Max Activity Time' setting when in active mode. */}
               {deviceState === 'active' && (
                 <div className="control-section">
                   <h3>Max Activity Time (seconds)</h3>
@@ -233,7 +253,7 @@ function App() {
               )}
             </div>
 
-            {/* Activity or Sleep Monitor */}
+            {/* Conditionally render either the Activity or Sleep monitor based on device state. */}
             {deviceState === 'active' ? (
               <ActivityMonitor
                 activity={activity}
@@ -251,7 +271,7 @@ function App() {
           </>
         ) : (
           <>
-            {/* Data Recorder */}
+            {/* The Data Recorder component. */}
             <DataRecorder
               recording={recording}
               currentActivity={recordingActivity}
@@ -262,7 +282,8 @@ function App() {
               liveDataCount={liveDataCount}
             />
 
-            {/* Model Trainer */}
+            {/* The Model Trainer component. */}
+
             <ModelTrainer
               patientId={patientId}
               trainingMessages={trainingMessages}
@@ -274,7 +295,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>Delirium Prevention Wearable System - ECE 198 Project</p>
+        <p>Delirium Prevention Wearable System</p>
       </footer>
     </div>
   );

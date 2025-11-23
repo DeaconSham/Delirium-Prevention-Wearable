@@ -5,7 +5,7 @@ This script sends various commands to test the LCD display.
 import serial
 import time
 
-SERIAL_PORT = 'COM7'
+SERIAL_PORT = 'COM7' #changes
 BAUD_RATE = 9600
 
 print("=" * 60)
@@ -13,7 +13,7 @@ print("LCD Display Test Script")
 print("=" * 60)
 
 try:
-    print(f"\n1. Opening serial port {SERIAL_PORT}...")
+    print(f"\n1. Opening serial port {SERIAL_PORT}")
     ser = serial.Serial(
         SERIAL_PORT,
         BAUD_RATE,
@@ -24,10 +24,10 @@ try:
     )
     print("   [OK] Port opened")
 
-    print("\n2. Waiting for Arduino to initialize (3 seconds)...")
+    print("\n2. Waiting for Arduino to initialize (3 seconds)")
     time.sleep(3)
 
-    print("\n3. Clearing buffers...")
+    print("\n3. Clearing buffers")
     ser.reset_input_buffer()
     ser.reset_output_buffer()
     print("   [OK] Buffers cleared")
@@ -69,13 +69,13 @@ try:
             except Exception as e:
                 print(f"   -> ERROR: {e}")
 
-        print(f"   Waiting 2 seconds to observe LCD...")
+        print(f"   Waiting 2 seconds to observe LCD")
         time.sleep(2)
 
     print("\n\n" + "=" * 60)
-    print("Test Complete!")
+    print("Test Complete")
     print("=" * 60)
-    print("\nDid you see the text on the LCD?")
+    print("\nDid you see text on the LCD?")
     print("If LCD only showed blue backlight with no text:")
     print("  1. Check LCD is properly connected via I2C")
     print("  2. Check LCD I2C address (should be 0x3E or 0x62)")

@@ -13,7 +13,7 @@ print("Serial Communication Test")
 print("=" * 50)
 
 try:
-    print(f"\n1. Opening serial port {SERIAL_PORT}...")
+    print(f"\n1. Opening serial port {SERIAL_PORT}")
     ser = serial.Serial(
         SERIAL_PORT,
         BAUD_RATE,
@@ -24,15 +24,15 @@ try:
     )
     print("   [OK] Port opened successfully")
 
-    print("\n2. Waiting for Arduino to initialize (3 seconds)...")
+    print("\n2. Waiting for Arduino to initialize (3 seconds)")
     time.sleep(3)
 
-    print("\n3. Clearing buffers...")
+    print("\n3. Clearing buffers")
     ser.reset_input_buffer()
     ser.reset_output_buffer()
     print("   [OK] Buffers cleared")
 
-    print("\n4. Reading incoming data from Arduino (10 seconds)...")
+    print("\n4. Reading incoming data from Arduino (10 seconds)")
     start_time = time.time()
     packet_count = 0
 
@@ -55,7 +55,7 @@ try:
     print("\n5. Testing write to Arduino...")
     test_commands = [
         "L:Test Message|Line 2\n",
-        "RGB:255,0,0\n"  # Red color
+        "RGB:255,0,0\n"
     ]
 
     for cmd in test_commands:
@@ -67,14 +67,14 @@ try:
             print(f"   -> Flushed successfully")
             time.sleep(0.5)
         except serial.SerialTimeoutException:
-            print(f"   -> ERROR: Write timeout!")
+            print(f"   -> ERROR: Write timeout")
             print("   This means Arduino is not consuming data from serial buffer")
             break
         except Exception as e:
             print(f"   -> ERROR: {e}")
             break
 
-    print("\n6. Closing serial port...")
+    print("\n6. Closing serial port")
     ser.close()
     print("   [OK] Port closed")
 
