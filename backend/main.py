@@ -230,7 +230,7 @@ def train_model_wrapper(patient_id, callback):
         load_model(patient_id)
         socketio.emit('state_update', {
             'patient': current_patient_id, 
-            'threshold': MAX_ACTIVITY_METER 
+            'threshold': MAX_ACTIVITY_SECONDS
         })
         send_serial_command(format_lcd("Training Done!", "Ready."))
         send_serial_command(COLOUR_ACTIVE)
